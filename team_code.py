@@ -18,6 +18,8 @@ from scipy import signal
 import wfdb
 import tensorflow as tf
 from tqdm import tqdm
+from sklearn.model_selection import train_test_split
+from sklearn.utils import shuffle
 
 from helper_code import *
 
@@ -40,6 +42,8 @@ def train_model(data_folder, model_folder, verbose):
     records = find_records(data_folder)
     num_records = len(records)
 
+
+
     if num_records == 0:
         raise FileNotFoundError('No data were provided.')
 
@@ -47,18 +51,19 @@ def train_model(data_folder, model_folder, verbose):
     if verbose:
         print('Extracting features and labels from the data...')
 
-    features = np.zeros((num_records, 6), dtype=np.float64)
-    X_data = np.zeros((num_records, 1000, 12), dtype=np.float64)
+    #features = np.zeros((num_records, 6), dtype=np.float64)
+    #X_data = np.zeros((num_records, 1000, 12), dtype=np.float64)
     labels = np.zeros(num_records, dtype=bool)
+    record_list = [] 
 
     # Iterate over the records.
     for i in tqdm(range(num_records)):
         if verbose:
             width = len(str(num_records))
             print(f'- {i+1:>{width}}/{num_records}: {records[i]}...')
-
+        
         record = os.path.join(data_folder, records[i])
-        features[i] = extract_features(record)
+        """
         ecg, text= load_signals(record)
         #text = load_text(record)
         fs = int(text["fs"])
@@ -74,15 +79,19 @@ def train_model(data_folder, model_folder, verbose):
         )
         ecg_pad = np.moveaxis(ecg_pad,0,-1)
         X_data[i] = ecg_pad
-
+        """
+        record_list.append(record)
         labels[i] = load_label(record)
+    
+    record_list = np.asarray(record_list)
+    
 
 
     # Train the models.
     if verbose:
         print('Training the model on the data...')
     
-    print("ECG array shape: ", X_data.shape)
+    #print("ECG array shape: ", X_data.shape)
     
     # This very simple model trains a random forest model with very simple features.
 
@@ -94,11 +103,34 @@ def train_model(data_folder, model_folder, verbose):
     # Fit the model.
     #model = RandomForestClassifier(
     #    n_estimators=n_estimators, max_leaf_nodes=max_leaf_nodes, random_state=random_state).fit(features, labels)
-    
-    model = build_model((1000,12), 1)
-    history = model.fit(X_data, labels, epochs=1, batch_size=32, verbose=1)
 
-    # Create a folder for the model if it does not already exist.
+    temp_model = "./tempmodel/"
+    temp_model_name = "my_temp_model.weights.h5"
+    os.makedirs(temp_model, exist_ok=True)
+
+    model_checkp = tf.keras.callbacks.ModelCheckpoint(
+        temp_model + temp_model_name,
+        monitor="val_PRC",
+        verbose=1,
+        save_best_only=True,
+        save_weights_only=True,
+        mode="min",
+        save_freq="epoch",
+    )
+
+    EPOCHS = 50
+    BATCH_SIZE = 64
+    X_train, X_val, y_train, y_val = train_test_split(record_list,labels,test_size=0.20, random_state=42)
+    model = build_model((1000,12), 1)
+    history = model.fit(balanced_batch_generator(BATCH_SIZE,generate_X(X_train), generate_y(y_train), 12, 1, y_train),
+                        steps_per_epoch=(len(X_train)//BATCH_SIZE),
+                        validation_data= batch_generator(BATCH_SIZE,generate_X(X_val), generate_y(y_val), 12, 1),
+                        validation_steps=(len(X_val)//BATCH_SIZE), validation_freq=1,
+                        epochs=EPOCHS, verbose=1,
+                        callbacks=[model_checkp]
+                        )
+    model.load_weights(temp_model + temp_model_name)
+
     os.makedirs(model_folder, exist_ok=True)
 
     # Save the model.
@@ -111,7 +143,7 @@ def train_model(data_folder, model_folder, verbose):
 # Load your trained models. This function is *required*. You should edit this function to add your code, but do *not* change the
 # arguments of this function. If you do not train one of the models, then you can return None for the model.
 def load_model(model_folder, verbose):
-    model_filename = os.path.join(model_folder, 'model.keras.h5')
+    model_filename = os.path.join(model_folder, 'model.keras')
     model = tf.keras.models.load_model(model_filename)
     return model
 
@@ -232,7 +264,8 @@ def _shortcut_layer(input_tensor, out_tensor):
     x = tf.keras.layers.Activation('relu')(x)
     return x
 
-def build_model(input_shape, nb_classes, depth=6, use_residual=True, lr_init = 0.001, kernel_size=40, bottleneck_size=36, nb_filters=36, clf="binary", loss=tf.keras.losses.BinaryFocalCrossentropy()):
+#tf.keras.losses.BinaryFocalCrossentropy()
+def build_model(input_shape, nb_classes, depth=6, use_residual=True, lr_init = 0.001, kernel_size=40, bottleneck_size=36, nb_filters=36, clf="binary", loss=tf.keras.losses.BinaryCrossentropy()):
     input_layer = tf.keras.layers.Input(input_shape)
 
     x = input_layer
@@ -268,3 +301,76 @@ def build_model(input_shape, nb_classes, depth=6, use_residual=True, lr_init = 0
                         )
               ])
     return model
+
+
+def batch_generator(batch_size, gen_x, gen_y, num_leads, num_classes): 
+    batch_features = np.zeros((batch_size,(100*10), num_leads))
+    batch_labels = np.zeros((batch_size,num_classes))
+    while True:
+        for i in range(batch_size):
+
+            batch_features[i] = next(gen_x)
+            batch_labels[i] = next(gen_y)
+            
+        yield batch_features, batch_labels
+
+
+
+def generate_X(X_train_file):
+    while True:
+        for i in range(len(X_train_file)):
+            ecg, text = load_signals(X_train_file[i])
+
+            fs = int(text["fs"])
+            fs_ratio = 100/fs
+            ecg_resamp = signal.resample(ecg,int(ecg.shape[0]*fs_ratio), axis=0)
+            ecg_pad = tf.keras.utils.pad_sequences(
+                np.moveaxis(ecg_resamp,0,-1),
+                maxlen=1000,
+                dtype='int32',
+                padding='post',
+                truncating='post',
+                value=0.0
+            )
+            ecg_pad = np.moveaxis(ecg_pad,0,-1)
+            yield ecg_pad
+
+def generate_y(y_train):
+    while True:
+        for i in range(len(y_train)):
+            yield y_train[i]
+
+
+def balanced_batch_generator(batch_size, gen_x, gen_y, num_leads, num_classes, y_data):
+    # Separate indices of positive and negative classes
+    positive_indices = np.where(y_data == 1)[0]
+    negative_indices = np.where(y_data == 0)[0]
+    
+    # Calculate the number of samples per class in each batch
+    half_batch = batch_size // 2
+    
+    # Initialize arrays to hold the batch data
+    batch_features = np.zeros((batch_size, (100*10), num_leads))
+    batch_labels = np.zeros((batch_size, num_classes))
+    
+    while True:
+        # Shuffle the indices to ensure randomness
+        positive_indices = shuffle(positive_indices)
+        negative_indices = shuffle(negative_indices)
+        
+        # Select half_batch samples from each class
+        selected_positive_indices = positive_indices[:half_batch]
+        selected_negative_indices = negative_indices[:half_batch]
+        
+        # Combine the selected indices
+        selected_indices = np.concatenate([selected_positive_indices, selected_negative_indices])
+        
+        # Shuffle the combined indices to mix positive and negative samples
+        selected_indices = shuffle(selected_indices)
+        
+        # Fill the batch with the selected samples
+        for i, idx in enumerate(selected_indices):
+            batch_features[i] = next(gen_x)
+            batch_labels[i] = next(gen_y)
+        
+        yield batch_features, batch_labels
