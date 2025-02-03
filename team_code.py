@@ -114,7 +114,7 @@ def train_model(data_folder, model_folder, verbose):
         verbose=1,
         save_best_only=True,
         save_weights_only=True,
-        mode="min",
+        mode="max",
         save_freq="epoch",
     )
 
