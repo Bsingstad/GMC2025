@@ -4,3 +4,6 @@ pandas==2.2.2
 scikit-learn==1.6.0
 wfdb==4.1.2
 h5py==3.12.1
+scipy==1.13.1
+tensorflow==2.16.1
+tqdm==4.64.0
