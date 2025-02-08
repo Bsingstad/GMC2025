@@ -1,9 +1,9 @@
 joblib==1.4.2
-numpy==2.0.2
-pandas==2.2.2
-scikit-learn==1.6.0
-wfdb==4.1.2
-h5py==3.12.1
+numpy==1.26.4
+pandas==2.2.3
+scikit-learn==1.5.2
+wfdb==3.4.1
+h5py==3.11.0
 scipy==1.13.1
 tensorflow==2.16.1
 tqdm==4.64.0

@@ -3,3 +3,4 @@ output/*
 data/*
 model/*
 my_output/*
+venv/*
