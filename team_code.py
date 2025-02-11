@@ -164,7 +164,7 @@ def run_model(record, model, verbose):
     ecg_pad = tf.keras.utils.pad_sequences(
         np.moveaxis(ecg_resamp,0,-1),
         maxlen=1000,
-        dtype='int32',
+        dtype='float32',
         padding='post',
         truncating='post',
         value=0.0
