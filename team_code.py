@@ -242,7 +242,7 @@ def save_model(model_folder, model):
     #d = {'model': model}
     #filename = os.path.join(model_folder, 'model.sav')
     #joblib.dump(d, filename, protocol=0)
-    filename = os.path.join(model_folder, 'model.keras.h5')
+    filename = os.path.join(model_folder, 'model.keras')
     model.save(filename)
 
 
