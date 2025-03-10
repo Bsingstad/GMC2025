@@ -20,6 +20,9 @@ import tensorflow as tf
 from tqdm import tqdm
 from sklearn.model_selection import train_test_split
 from sklearn.utils import shuffle
+from tensorflow.keras import layers, Model
+from tensorflow.keras.layers import Activation
+from tensorflow.keras.callbacks import ModelCheckpoint
 
 from helper_code import *
 
@@ -118,10 +121,28 @@ def train_model(data_folder, model_folder, verbose):
         save_freq="epoch",
     )
 
-    EPOCHS = 50
+    EPOCHS = 30
     BATCH_SIZE = 64
     X_train, X_val, y_train, y_val = train_test_split(record_list,labels,test_size=0.20, random_state=42)
-    model = build_model((1000,12), 1)
+    #model = build_model((1000,12), 1)
+    model = build_inception_next((1000,12), 1)
+    model.compile(loss=tf.keras.losses.BinaryCrossentropy(), optimizer=tf.keras.optimizers.AdamW(learning_rate=1e-3), 
+              metrics=[tf.keras.metrics.BinaryAccuracy(),
+                       tf.keras.metrics.AUC(
+                    num_thresholds=200,
+                    curve='ROC',
+                    summation_method='interpolation',
+                    name="ROC",
+                    multi_label=True,
+                    ),
+                   tf.keras.metrics.AUC(
+                    num_thresholds=200,
+                    curve='PR',
+                    summation_method='interpolation',
+                    name="PRC",
+                    multi_label=True,
+                    )
+          ])
     history = model.fit(balanced_batch_generator(BATCH_SIZE,generate_X(X_train), generate_y(y_train), 12, 1, y_train),
                         steps_per_epoch=(len(X_train)//BATCH_SIZE),
                         validation_data= batch_generator(BATCH_SIZE,generate_X(X_val), generate_y(y_val), 12, 1),
@@ -223,6 +244,132 @@ def save_model(model_folder, model):
     #joblib.dump(d, filename, protocol=0)
     filename = os.path.join(model_folder, 'model.keras.h5')
     model.save(filename)
+
+
+def se_block(input_tensor, reduction=16):
+    """Squeeze-and-Excitation block."""
+    filters = input_tensor.shape[-1]
+    se = layers.GlobalAveragePooling1D()(input_tensor)
+    se = layers.Reshape((1, filters))(se)
+    se = layers.Dense(filters // reduction, activation='gelu', use_bias=False)(se)
+    se = layers.Dense(filters, activation='sigmoid', use_bias=False)(se)
+    return layers.multiply([input_tensor, se])
+
+def temporal_attention(x):
+    q = layers.Conv1D(x.shape[-1], 1, padding='same')(x)
+    k = layers.Conv1D(x.shape[-1], 1, padding='same')(x)
+    q = layers.BatchNormalization()(q)
+    k = layers.BatchNormalization()(k)
+    attn = tf.keras.layers.Attention(use_scale=True)([q, k])  # Learnable scaling
+    return layers.multiply([x, attn])
+
+def inception_module(input_tensor, filters, kernel_size=40, stride=1):
+    """
+    Creates an inception-style module with multiple convolution paths and max pooling.
+    
+    Args:
+        input_tensor: Input tensor to the module
+        nb_filters: Number of filters for convolution layers
+        kernel_size: Base kernel size for convolutions (default: 17)
+        stride: Stride for convolutions and pooling (default: 1)
+        activation: Activation function to use (default: 'relu')
+        
+    Returns:
+        Concatenated output tensor from all paths
+    """
+    # Generate kernel sizes by dividing base kernel_size by powers of 2
+    kernel_size_s = [kernel_size // (2 ** i) for i in range(4)]
+
+    new_filters = filters // len(kernel_size_s)
+    
+    # Initialize list to store convolution outputs
+    conv_list = []
+    
+    # Create parallel convolution paths with different kernel sizes
+    for i in range(len(kernel_size_s)):
+        conv = tf.keras.layers.Conv1D(
+            filters=new_filters,
+            kernel_size=kernel_size_s[i],
+            strides=stride,
+            padding='same',
+            use_bias=False
+        )(input_tensor)
+        conv_list.append(conv)
+    
+
+    # Concatenate all paths along the channel axis
+    return tf.keras.layers.Concatenate(axis=2)(conv_list)
+
+
+def residual_block(x, filters, stride=1):
+    """Basic residual block with two 3x1 conv layers and identity shortcut."""
+    shortcut = x
+    
+    # Check if we need to adjust the shortcut connection
+    if stride != 1 or x.shape[-1] != filters:
+        shortcut = layers.Conv1D(filters, 1, strides=stride, padding='same')(shortcut)
+        shortcut = layers.BatchNormalization()(shortcut)
+    
+    # First convolution
+    x = layers.Conv1D(filters, 7, strides=stride, padding='same')(x)
+    x = inception_module(x, filters=filters)
+    x = layers.BatchNormalization()(x)
+    x = Activation('gelu')(x)
+
+    
+    # Second convolution
+    x = layers.Conv1D(filters, 3, strides=1, padding='same')(x)
+    x = layers.BatchNormalization()(x)
+
+    x = se_block(x)
+    
+    #x = temporal_attention(x)
+    
+    # Add shortcut and activate
+    x = layers.Add()([x, shortcut])
+    x = Activation('gelu')(x)
+    #x = GELU()(x)
+    
+    return x
+
+
+def build_inception_next(input_shape, num_classes):
+    """Build xresnet101 model for 1D ECG signal classification."""
+    inputs = layers.Input(shape=input_shape)
+    
+    # Initial convolution
+    x = layers.Conv1D(64, 11, strides=2, padding='same')(inputs)
+    x = layers.BatchNormalization()(x)
+    x = Activation('gelu')(x)
+    #x = GELU()(x)
+    #x = layers.MaxPool1D(3, strides=2, padding='same')(x)
+
+    # Residual stages
+    # Stage 1 (3 blocks)
+    for _ in range(3):
+        x = residual_block(x, 64)
+    
+    # Stage 2 (4 blocks)
+    x = residual_block(x, 128, stride=2)
+    for _ in range(3):
+        x = residual_block(x, 128)
+    
+    # Stage 3 (23 blocks)
+    x = residual_block(x, 256, stride=2)
+    for _ in range(22):
+        x = residual_block(x, 256)
+    
+        
+    # Stage 4 (3 blocks)
+    x = residual_block(x, 512, stride=2)
+    for _ in range(2):
+        x = residual_block(x, 512)
+    
+    # Final layers
+    x = layers.GlobalAveragePooling1D()(x)
+    outputs = layers.Dense(num_classes, activation='sigmoid')(x)
+    
+    return Model(inputs, outputs)
 
 
 def _inception_module(input_tensor, stride=1, activation='linear', use_bottleneck=True, kernel_size=40, bottleneck_size=36, nb_filters=36):
