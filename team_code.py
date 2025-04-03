@@ -121,8 +121,8 @@ def train_model(data_folder, model_folder, verbose):
         save_freq="epoch",
     )
 
-    EPOCHS = 15
-    BATCH_SIZE = 64
+    EPOCHS = 5
+    BATCH_SIZE = 32
     X_train, X_val, y_train, y_val = train_test_split(record_list,labels,test_size=0.20, random_state=42)
     #model = build_model((1000,12), 1)
     model = build_inception_next((1000,12), 1)
