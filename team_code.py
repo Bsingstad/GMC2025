@@ -171,7 +171,7 @@ def train_model(data_folder, model_folder, verbose):
     record_list_finetune = record_list[indices_finetune]
     labels_finetune = labels[indices_finetune]
     X_train, X_val, y_train, y_val = train_test_split(record_list_finetune,labels_finetune,test_size=0.20, random_state=42)
-    model = build_model((1000,12), 1)
+
     model.compile(loss=tf.keras.losses.BinaryCrossentropy(), optimizer=tf.keras.optimizers.AdamW(learning_rate=1e-3), 
               metrics=[tf.keras.metrics.BinaryAccuracy(),
                        tf.keras.metrics.AUC(
