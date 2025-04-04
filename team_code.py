@@ -38,6 +38,7 @@ from helper_code import *
 # Train your model.
 def train_model(data_folder, model_folder, verbose):
     NEW_FS = 100
+    SOURCE = "# Source:"
     # Find the data files.
     if verbose:
         print('Finding the Challenge data...')
@@ -57,6 +58,7 @@ def train_model(data_folder, model_folder, verbose):
     #features = np.zeros((num_records, 6), dtype=np.float64)
     #X_data = np.zeros((num_records, 1000, 12), dtype=np.float64)
     labels = np.zeros(num_records, dtype=bool)
+    source_list = []
     record_list = [] 
 
     # Iterate over the records.
@@ -85,30 +87,24 @@ def train_model(data_folder, model_folder, verbose):
         """
         record_list.append(record)
         labels[i] = load_label(record)
+        source_list.append(get_source(record))
     
     record_list = np.asarray(record_list)
-    
+    source_list = np.asarray(source_list)
 
+    indices_pretrain = np.where(source_list == 'CODE-15%')[0]
+    indices_finetune = np.where(source_list != 'CODE-15%')[0]
+    
 
     # Train the models.
     if verbose:
         print('Training the model on the data...')
     
-    #print("ECG array shape: ", X_data.shape)
-    
-    # This very simple model trains a random forest model with very simple features.
-
-    # Define the parameters for the random forest classifier and regressor.
-    #n_estimators = 12  # Number of trees in the forest.
-    #max_leaf_nodes = 34  # Maximum number of leaf nodes in each tree.
-    #random_state = 56  # Random state; set for reproducibility.
-
-    # Fit the model.
-    #model = RandomForestClassifier(
-    #    n_estimators=n_estimators, max_leaf_nodes=max_leaf_nodes, random_state=random_state).fit(features, labels)
+    if verbose:
+        print('Pre-training the model...')
 
     temp_model = "./tempmodel/"
-    temp_model_name = "my_temp_model.weights.h5"
+    temp_model_name = "temp_pretrain_model.weights.h5"
     os.makedirs(temp_model, exist_ok=True)
 
     model_checkp = tf.keras.callbacks.ModelCheckpoint(
@@ -121,11 +117,12 @@ def train_model(data_folder, model_folder, verbose):
         save_freq="epoch",
     )
 
-    EPOCHS = 5
-    BATCH_SIZE = 32
-    X_train, X_val, y_train, y_val = train_test_split(record_list,labels,test_size=0.20, random_state=42)
-    #model = build_model((1000,12), 1)
-    model = build_inception_next((1000,12), 1)
+    EPOCHS = 15
+    BATCH_SIZE = 64
+    record_list_pretrain = record_list[indices_pretrain]
+    labels_pretrain = labels[indices_pretrain]
+    X_train, X_val, y_train, y_val = train_test_split(record_list_pretrain,labels_pretrain,test_size=0.20, random_state=42)
+    model = build_model((1000,12), 1)
     model.compile(loss=tf.keras.losses.BinaryCrossentropy(), optimizer=tf.keras.optimizers.AdamW(learning_rate=1e-3), 
               metrics=[tf.keras.metrics.BinaryAccuracy(),
                        tf.keras.metrics.AUC(
@@ -151,6 +148,56 @@ def train_model(data_folder, model_folder, verbose):
                         callbacks=[model_checkp]
                         )
     model.load_weights(temp_model + temp_model_name)
+
+    if verbose:
+        print('Finetuning the model...')
+
+    temp_model = "./tempmodel/"
+    temp_model_name = "temp_finetune_model.weights.h5"
+    os.makedirs(temp_model, exist_ok=True)
+
+    model_checkp = tf.keras.callbacks.ModelCheckpoint(
+        temp_model + temp_model_name,
+        monitor="val_PRC",
+        verbose=1,
+        save_best_only=True,
+        save_weights_only=True,
+        mode="max",
+        save_freq="epoch",
+    )
+
+    EPOCHS = 15
+    BATCH_SIZE = 64
+    record_list_finetune = record_list[indices_finetune]
+    labels_finetune = labels[indices_finetune]
+    X_train, X_val, y_train, y_val = train_test_split(record_list_finetune,labels_finetune,test_size=0.20, random_state=42)
+    model = build_model((1000,12), 1)
+    model.compile(loss=tf.keras.losses.BinaryCrossentropy(), optimizer=tf.keras.optimizers.AdamW(learning_rate=1e-3), 
+              metrics=[tf.keras.metrics.BinaryAccuracy(),
+                       tf.keras.metrics.AUC(
+                    num_thresholds=200,
+                    curve='ROC',
+                    summation_method='interpolation',
+                    name="ROC",
+                    multi_label=True,
+                    ),
+                   tf.keras.metrics.AUC(
+                    num_thresholds=200,
+                    curve='PR',
+                    summation_method='interpolation',
+                    name="PRC",
+                    multi_label=True,
+                    )
+          ])
+    history = model.fit(balanced_batch_generator(BATCH_SIZE,generate_X(X_train), generate_y(y_train), 12, 1, y_train),
+                        steps_per_epoch=(len(X_train)//BATCH_SIZE),
+                        validation_data= batch_generator(BATCH_SIZE,generate_X(X_val), generate_y(y_val), 12, 1),
+                        validation_steps=(len(X_val)//BATCH_SIZE), validation_freq=1,
+                        epochs=EPOCHS, verbose=1,
+                        callbacks=[model_checkp]
+                        )
+    model.load_weights(temp_model + temp_model_name)
+
 
     os.makedirs(model_folder, exist_ok=True)
 
@@ -521,3 +568,11 @@ def balanced_batch_generator(batch_size, gen_x, gen_y, num_leads, num_classes, y
             batch_labels[i] = next(gen_y)
         
         yield batch_features, batch_labels
+
+def get_source(record):
+    # Load the record
+    _, text = load_header(record)
+    # Extract the source information from the text header
+    source = get_variable(text, "# Source:")
+    return source
+
