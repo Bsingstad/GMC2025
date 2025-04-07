@@ -117,7 +117,7 @@ def train_model(data_folder, model_folder, verbose):
         save_freq="epoch",
     )
 
-    EPOCHS = 15
+    EPOCHS = 8
     BATCH_SIZE = 64
     record_list_pretrain = record_list[indices_pretrain]
     labels_pretrain = labels[indices_pretrain]
@@ -166,7 +166,7 @@ def train_model(data_folder, model_folder, verbose):
         save_freq="epoch",
     )
 
-    EPOCHS = 15
+    EPOCHS = 5
     BATCH_SIZE = 64
     record_list_finetune = record_list[indices_finetune]
     labels_finetune = labels[indices_finetune]
