@@ -571,8 +571,8 @@ def balanced_batch_generator(batch_size, gen_x, gen_y, num_leads, num_classes, y
 
 def get_source(record):
     # Load the record
-    _, text = load_header(record)
+    text = load_header(record)
     # Extract the source information from the text header
     source = get_variable(text, "# Source:")
-    return source
+    return source[0] 
 
