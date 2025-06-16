@@ -11,6 +11,7 @@
 
 import joblib
 import numpy as np
+import pandas as pd
 import os
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 import sys
@@ -46,6 +47,7 @@ def train_model(data_folder, model_folder, verbose):
     records = find_records(data_folder)
     num_records = len(records)
 
+    pretrain_auxillary_labels =pd.read_csv(os.path.join("./", 'exams.csv'),dtype={'exam_id': str})
 
 
     if num_records == 0:
@@ -91,11 +93,14 @@ def train_model(data_folder, model_folder, verbose):
     
     record_list = np.asarray(record_list)
     source_list = np.asarray(source_list)
+    record_list_stripped = [os.path.basename(record) for record in record_list]
+
+    print("Record list:", record_list_stripped)
 
     indices_pretrain = np.where(source_list == 'CODE-15%')[0]
     indices_finetune = np.where(source_list != 'CODE-15%')[0]
     
-
+    """
     # Train the models.
     if verbose:
         print('Training the model on the data...')
@@ -117,11 +122,30 @@ def train_model(data_folder, model_folder, verbose):
         save_freq="epoch",
     )
 
+    record_list_pretrain = record_list[indices_pretrain]
+    print(record_list_pretrain)
+
+    # Select and order rows based on the list
+    ordered_pretrain_auxillary_labels = pretrain_auxillary_labels[pretrain_auxillary_labels['exam_id'].isin(record_list_pretrain)]
+    print(ordered_pretrain_auxillary_labels.shape)
+    ordered_pretrain_auxillary_labels = ordered_pretrain_auxillary_labels.set_index('exam_id').loc[record_list_pretrain].reset_index()
+    ordered_pretrain_auxillary_labels = ordered_pretrain_auxillary_labels[["1dAVb","RBBB","LBBB","SB","ST","AF"]].values
+    labels_pretrain_auxiliary = ordered_pretrain_auxillary_labels.astype(int)
+
+    print(labels_pretrain_auxiliary.shape)
+    print(record_list_pretrain.shape)
+
+
     EPOCHS = 8
     BATCH_SIZE = 64
     record_list_pretrain = record_list[indices_pretrain]
     labels_pretrain = labels[indices_pretrain]
-    X_train, X_val, y_train, y_val = train_test_split(record_list_pretrain,labels_pretrain,test_size=0.20, random_state=42)
+
+    print(labels_pretrain.shape)
+    labels_pretrain = np.hstack((labels_pretrain_auxiliary, labels_pretrain.reshape(-1, 1)))
+    print(labels_pretrain.shape)
+
+    X_train, X_val, y_train, y_val = train_test_split(record_list_pretrain,labels_pretrain, test_size=0.20, random_state=42)
     model = build_model((1000,12), 1)
     model.compile(loss=tf.keras.losses.BinaryCrossentropy(), optimizer=tf.keras.optimizers.AdamW(learning_rate=1e-3), 
               metrics=[tf.keras.metrics.BinaryAccuracy(),
@@ -152,6 +176,7 @@ def train_model(data_folder, model_folder, verbose):
     if verbose:
         print('Finetuning the model...')
 
+    """
     temp_model = "./tempmodel/"
     temp_model_name = "temp_finetune_model.weights.h5"
     os.makedirs(temp_model, exist_ok=True)
@@ -166,12 +191,12 @@ def train_model(data_folder, model_folder, verbose):
         save_freq="epoch",
     )
 
-    EPOCHS = 5
-    BATCH_SIZE = 64
+    EPOCHS = 30
+    BATCH_SIZE = 32
     record_list_finetune = record_list[indices_finetune]
     labels_finetune = labels[indices_finetune]
     X_train, X_val, y_train, y_val = train_test_split(record_list_finetune,labels_finetune,test_size=0.20, random_state=42)
-
+    model = build_model((1000,12), 1)
     model.compile(loss=tf.keras.losses.BinaryCrossentropy(), optimizer=tf.keras.optimizers.AdamW(learning_rate=1e-3), 
               metrics=[tf.keras.metrics.BinaryAccuracy(),
                        tf.keras.metrics.AUC(
@@ -179,14 +204,14 @@ def train_model(data_folder, model_folder, verbose):
                     curve='ROC',
                     summation_method='interpolation',
                     name="ROC",
-                    multi_label=True,
+                    multi_label=False,
                     ),
                    tf.keras.metrics.AUC(
                     num_thresholds=200,
                     curve='PR',
                     summation_method='interpolation',
                     name="PRC",
-                    multi_label=True,
+                    multi_label=False,
                     )
           ])
     history = model.fit(balanced_batch_generator(BATCH_SIZE,generate_X(X_train), generate_y(y_train), 12, 1, y_train),
