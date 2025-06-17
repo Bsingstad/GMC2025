@@ -100,7 +100,7 @@ def train_model(data_folder, model_folder, verbose):
     indices_pretrain = np.where(source_list == 'CODE-15%')[0]
     indices_finetune = np.where(source_list != 'CODE-15%')[0]
     
-    """
+   
     # Train the models.
     if verbose:
         print('Training the model on the data...')
@@ -124,7 +124,7 @@ def train_model(data_folder, model_folder, verbose):
 
     record_list_pretrain = record_list[indices_pretrain]
     print(record_list_pretrain)
-
+    """
     # Select and order rows based on the list
     ordered_pretrain_auxillary_labels = pretrain_auxillary_labels[pretrain_auxillary_labels['exam_id'].isin(record_list_pretrain)]
     print(ordered_pretrain_auxillary_labels.shape)
@@ -134,7 +134,7 @@ def train_model(data_folder, model_folder, verbose):
 
     print(labels_pretrain_auxiliary.shape)
     print(record_list_pretrain.shape)
-
+    """
 
     EPOCHS = 8
     BATCH_SIZE = 64
@@ -225,7 +225,7 @@ def train_model(data_folder, model_folder, verbose):
 
 
     os.makedirs(model_folder, exist_ok=True)
-
+    """
     # Save the model.
     save_model(model_folder, model)
 
