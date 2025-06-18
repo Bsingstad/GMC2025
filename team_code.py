@@ -47,7 +47,7 @@ def train_model(data_folder, model_folder, verbose):
     records = find_records(data_folder)
     num_records = len(records)
 
-    pretrain_auxillary_labels =pd.read_csv(os.path.join("./", 'exams.csv'),dtype={'exam_id': str})
+    pretrain_auxillary_labels = pd.read_csv(os.path.join("./", 'exams.csv'),dtype={'exam_id': str})
 
 
     if num_records == 0:
@@ -87,9 +87,11 @@ def train_model(data_folder, model_folder, verbose):
         ecg_pad = np.moveaxis(ecg_pad,0,-1)
         X_data[i] = ecg_pad
         """
+
         record_list.append(record)
         labels[i] = load_label(record)
         source_list.append(get_source(record))
+
     
     record_list = np.asarray(record_list)
     source_list = np.asarray(source_list)
@@ -136,14 +138,16 @@ def train_model(data_folder, model_folder, verbose):
     print(record_list_pretrain.shape)
     """
 
-    EPOCHS = 8
-    BATCH_SIZE = 64
+    EPOCHS = 30
+    #BATCH_SIZE = 64
+    BATCH_SIZE = 32
     record_list_pretrain = record_list[indices_pretrain]
     labels_pretrain = labels[indices_pretrain]
 
-    print(labels_pretrain.shape)
-    labels_pretrain = np.hstack((labels_pretrain_auxiliary, labels_pretrain.reshape(-1, 1)))
-    print(labels_pretrain.shape)
+    print("labels_pretrain.shape:", labels_pretrain.shape)
+    #labels_pretrain = np.hstack((labels_pretrain_auxiliary, labels_pretrain.reshape(-1, 1)))
+    #labels_pretrain = np.expand_dims(labels_pretrain, axis=1)
+    #print(labels_pretrain.shape)
 
     X_train, X_val, y_train, y_val = train_test_split(record_list_pretrain,labels_pretrain, test_size=0.20, random_state=42)
     model = build_model((1000,12), 1)
@@ -154,14 +158,14 @@ def train_model(data_folder, model_folder, verbose):
                     curve='ROC',
                     summation_method='interpolation',
                     name="ROC",
-                    multi_label=True,
+                    multi_label=False,
                     ),
                    tf.keras.metrics.AUC(
                     num_thresholds=200,
                     curve='PR',
                     summation_method='interpolation',
                     name="PRC",
-                    multi_label=True,
+                    multi_label=False,
                     )
           ])
     history = model.fit(balanced_batch_generator(BATCH_SIZE,generate_X(X_train), generate_y(y_train), 12, 1, y_train),
