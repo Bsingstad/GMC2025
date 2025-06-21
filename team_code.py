@@ -9,6 +9,7 @@
 #
 ################################################################################
 
+import time
 import joblib
 import numpy as np
 import pandas as pd
@@ -40,12 +41,19 @@ from helper_code import *
 def train_model(data_folder, model_folder, verbose):
     NEW_FS = 100
     SOURCE = "# Source:"
+    os.makedirs(model_folder, exist_ok=True)
     # Find the data files.
     if verbose:
         print('Finding the Challenge data...')
 
     records = find_records(data_folder)
     num_records = len(records)
+
+    # Sort the records.
+    records = [int(s) for s in records]
+    records = sorted(records)
+    records = [str(s) for s in records]
+
 
     pretrain_auxillary_labels = pd.read_csv(os.path.join("./", 'exams.csv'),dtype={'exam_id': str})
 
@@ -96,12 +104,12 @@ def train_model(data_folder, model_folder, verbose):
     record_list = np.asarray(record_list)
     source_list = np.asarray(source_list)
     record_list_stripped = [os.path.basename(record) for record in record_list]
+    record_list_stripped = [int(s) for s in record_list_stripped]
 
-    print("Record list:", record_list_stripped)
+
 
     indices_pretrain = np.where(source_list == 'CODE-15%')[0]
-    indices_finetune = np.where(source_list != 'CODE-15%')[0]
-    
+    indices_finetune = np.where((source_list == 'SaMi-Trop')|(source_list == 'PTB-XL')|(source_list == 'Athlete'))[0]
    
     # Train the models.
     if verbose:
@@ -123,54 +131,56 @@ def train_model(data_folder, model_folder, verbose):
         mode="max",
         save_freq="epoch",
     )
+    record_list_stripped = np.asarray(record_list_stripped)
 
-    record_list_pretrain = record_list[indices_pretrain]
-    print(record_list_pretrain)
-    """
-    # Select and order rows based on the list
-    ordered_pretrain_auxillary_labels = pretrain_auxillary_labels[pretrain_auxillary_labels['exam_id'].isin(record_list_pretrain)]
-    print(ordered_pretrain_auxillary_labels.shape)
-    ordered_pretrain_auxillary_labels = ordered_pretrain_auxillary_labels.set_index('exam_id').loc[record_list_pretrain].reset_index()
-    ordered_pretrain_auxillary_labels = ordered_pretrain_auxillary_labels[["1dAVb","RBBB","LBBB","SB","ST","AF"]].values
-    labels_pretrain_auxiliary = ordered_pretrain_auxillary_labels.astype(int)
+    record_list_stripped_pretrain = record_list_stripped[indices_pretrain]
+    
+    
+    pretrain_auxillary_labels["exam_id"] = pretrain_auxillary_labels["exam_id"].astype(int)
+    pretrain_auxillary_labels = pretrain_auxillary_labels[pretrain_auxillary_labels["exam_id"].isin(record_list_stripped_pretrain)].sort_values(by="exam_id")
+    
+    if not (pretrain_auxillary_labels["exam_id"].values == record_list_stripped_pretrain).all():
+        raise ValueError("Mismatch between pretrain_auxillary_labels and record_list_stripped_pretrain.")
 
-    print(labels_pretrain_auxiliary.shape)
-    print(record_list_pretrain.shape)
-    """
+
+    pretrain_auxillary_labels = pretrain_auxillary_labels[["1dAVb","RBBB","LBBB","SB","ST","AF"]].values
+    pretrain_auxillary_labels = pretrain_auxillary_labels.astype(int)
+
+    
 
     EPOCHS = 30
-    #BATCH_SIZE = 64
     BATCH_SIZE = 32
     record_list_pretrain = record_list[indices_pretrain]
     labels_pretrain = labels[indices_pretrain]
 
     print("labels_pretrain.shape:", labels_pretrain.shape)
-    #labels_pretrain = np.hstack((labels_pretrain_auxiliary, labels_pretrain.reshape(-1, 1)))
+    labels_pretrain = np.hstack((pretrain_auxillary_labels, labels_pretrain.reshape(-1, 1)))
     #labels_pretrain = np.expand_dims(labels_pretrain, axis=1)
-    #print(labels_pretrain.shape)
+    print(labels_pretrain.shape)
+
 
     X_train, X_val, y_train, y_val = train_test_split(record_list_pretrain,labels_pretrain, test_size=0.20, random_state=42)
-    model = build_model((1000,12), 1)
+    model = build_model((1000,12), labels_pretrain.shape[1])
     model.compile(loss=tf.keras.losses.BinaryCrossentropy(), optimizer=tf.keras.optimizers.AdamW(learning_rate=1e-3), 
-              metrics=[tf.keras.metrics.BinaryAccuracy(),
+              metrics=[#tf.keras.metrics.BinaryAccuracy(),
                        tf.keras.metrics.AUC(
                     num_thresholds=200,
                     curve='ROC',
                     summation_method='interpolation',
                     name="ROC",
-                    multi_label=False,
+                    multi_label=True,
                     ),
                    tf.keras.metrics.AUC(
                     num_thresholds=200,
                     curve='PR',
                     summation_method='interpolation',
                     name="PRC",
-                    multi_label=False,
+                    multi_label=True,
                     )
           ])
-    history = model.fit(balanced_batch_generator(BATCH_SIZE,generate_X(X_train), generate_y(y_train), 12, 1, y_train),
+    history = model.fit(balanced_batch_generator(BATCH_SIZE,generate_X(X_train), generate_y(y_train), 12, labels_pretrain.shape[1], y_train),
                         steps_per_epoch=(len(X_train)//BATCH_SIZE),
-                        validation_data= batch_generator(BATCH_SIZE,generate_X(X_val), generate_y(y_val), 12, 1),
+                        validation_data= batch_generator(BATCH_SIZE,generate_X(X_val), generate_y(y_val), 12, labels_pretrain.shape[1]),
                         validation_steps=(len(X_val)//BATCH_SIZE), validation_freq=1,
                         epochs=EPOCHS, verbose=1,
                         callbacks=[model_checkp]
@@ -180,7 +190,6 @@ def train_model(data_folder, model_folder, verbose):
     if verbose:
         print('Finetuning the model...')
 
-    """
     temp_model = "./tempmodel/"
     temp_model_name = "temp_finetune_model.weights.h5"
     os.makedirs(temp_model, exist_ok=True)
@@ -200,8 +209,19 @@ def train_model(data_folder, model_folder, verbose):
     record_list_finetune = record_list[indices_finetune]
     labels_finetune = labels[indices_finetune]
     X_train, X_val, y_train, y_val = train_test_split(record_list_finetune,labels_finetune,test_size=0.20, random_state=42)
-    model = build_model((1000,12), 1)
-    model.compile(loss=tf.keras.losses.BinaryCrossentropy(), optimizer=tf.keras.optimizers.AdamW(learning_rate=1e-3), 
+    x = model.layers[-2].output  # Get output of second-last layer
+    new_output = tf.keras.layers.Dense(1, activation='sigmoid')(x)
+
+    # Create new model
+    new_model = Model(inputs=model.input, outputs=new_output)
+    
+    for layer in new_model.layers[:-2]:  # Freeze all except last two
+        layer.trainable = False
+
+    for layer in new_model.layers[-2:]:  # Ensure last two are trainable
+        layer.trainable = True
+    
+    new_model.compile(loss=tf.keras.losses.BinaryCrossentropy(), optimizer=tf.keras.optimizers.AdamW(learning_rate=1e-3), 
               metrics=[tf.keras.metrics.BinaryAccuracy(),
                        tf.keras.metrics.AUC(
                     num_thresholds=200,
@@ -218,20 +238,20 @@ def train_model(data_folder, model_folder, verbose):
                     multi_label=False,
                     )
           ])
-    history = model.fit(balanced_batch_generator(BATCH_SIZE,generate_X(X_train), generate_y(y_train), 12, 1, y_train),
+    history = new_model.fit(balanced_batch_generator(BATCH_SIZE,generate_X(X_train), generate_y(y_train), 12, 1, y_train),
                         steps_per_epoch=(len(X_train)//BATCH_SIZE),
                         validation_data= batch_generator(BATCH_SIZE,generate_X(X_val), generate_y(y_val), 12, 1),
                         validation_steps=(len(X_val)//BATCH_SIZE), validation_freq=1,
                         epochs=EPOCHS, verbose=1,
                         callbacks=[model_checkp]
                         )
-    model.load_weights(temp_model + temp_model_name)
+    new_model.load_weights(temp_model + temp_model_name)
 
 
     os.makedirs(model_folder, exist_ok=True)
-    """
+
     # Save the model.
-    save_model(model_folder, model)
+    save_model(model_folder, new_model)
 
     if verbose:
         print('Done.')
@@ -506,23 +526,6 @@ def build_model(input_shape, nb_classes, depth=6, use_residual=True, lr_init = 0
 
     output_layer = tf.keras.layers.Dense(units=nb_classes,activation='sigmoid')(gap_layer)  
     model = tf.keras.models.Model(inputs=input_layer, outputs=output_layer)
-    model.compile(loss=loss, optimizer=tf.keras.optimizers.Adam(learning_rate=lr_init), 
-                  metrics=[tf.keras.metrics.BinaryAccuracy(),
-                           tf.keras.metrics.AUC(
-                        num_thresholds=200,
-                        curve='ROC',
-                        summation_method='interpolation',
-                        name="ROC",
-                        multi_label=True,
-                        ),
-                       tf.keras.metrics.AUC(
-                        num_thresholds=200,
-                        curve='PR',
-                        summation_method='interpolation',
-                        name="PRC",
-                        multi_label=True,
-                        )
-              ])
     return model
 
 
