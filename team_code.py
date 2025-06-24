@@ -48,11 +48,8 @@ def train_model(data_folder, model_folder, verbose):
 
     records = find_records(data_folder)
     num_records = len(records)
-
-    # Sort the records.
-    records = [int(s) for s in records]
     records = sorted(records)
-    records = [str(s) for s in records]
+
 
 
     pretrain_auxillary_labels = pd.read_csv(os.path.join("./", 'exams.csv'),dtype={'exam_id': str})
@@ -78,24 +75,6 @@ def train_model(data_folder, model_folder, verbose):
             print(f'- {i+1:>{width}}/{num_records}: {records[i]}...')
         
         record = os.path.join(data_folder, records[i])
-        """
-        ecg, text= load_signals(record)
-        #text = load_text(record)
-        fs = int(text["fs"])
-        fs_ratio = NEW_FS/fs
-        ecg_resamp = signal.resample(ecg,int(ecg.shape[0]*fs_ratio), axis=0)
-        ecg_pad = tf.keras.utils.pad_sequences(
-            np.moveaxis(ecg_resamp,0,-1),
-            maxlen=1000,
-            dtype='int32',
-            padding='post',
-            truncating='post',
-            value=0.0
-        )
-        ecg_pad = np.moveaxis(ecg_pad,0,-1)
-        X_data[i] = ecg_pad
-        """
-
         record_list.append(record)
         labels[i] = load_label(record)
         source_list.append(get_source(record))
@@ -105,8 +84,11 @@ def train_model(data_folder, model_folder, verbose):
     source_list = np.asarray(source_list)
     record_list_stripped = [os.path.basename(record) for record in record_list]
     record_list_stripped = [int(s) for s in record_list_stripped]
-
-
+    #print("record_list_stripped:", record_list_stripped)
+    #time.sleep(50)
+    #records = [int(os.path.basename(s)) for s in records]
+    #
+    #records = [str(s) for s in records]
 
     indices_pretrain = np.where(source_list == 'CODE-15%')[0]
     indices_finetune = np.where((source_list == 'SaMi-Trop')|(source_list == 'PTB-XL')|(source_list == 'Athlete'))[0]
@@ -137,8 +119,11 @@ def train_model(data_folder, model_folder, verbose):
     
     
     pretrain_auxillary_labels["exam_id"] = pretrain_auxillary_labels["exam_id"].astype(int)
-    pretrain_auxillary_labels = pretrain_auxillary_labels[pretrain_auxillary_labels["exam_id"].isin(record_list_stripped_pretrain)].sort_values(by="exam_id")
-    
+    pretrain_auxillary_labels = pretrain_auxillary_labels[pretrain_auxillary_labels["exam_id"].isin(record_list_stripped_pretrain)]
+
+    pretrain_auxillary_labels['exam_id'] = pd.Categorical(pretrain_auxillary_labels['exam_id'], categories=record_list_stripped_pretrain, ordered=True)
+    pretrain_auxillary_labels = pretrain_auxillary_labels.sort_values('exam_id')
+
     if not (pretrain_auxillary_labels["exam_id"].values == record_list_stripped_pretrain).all():
         raise ValueError("Mismatch between pretrain_auxillary_labels and record_list_stripped_pretrain.")
 
@@ -215,10 +200,10 @@ def train_model(data_folder, model_folder, verbose):
     # Create new model
     new_model = Model(inputs=model.input, outputs=new_output)
     
-    for layer in new_model.layers[:-2]:  # Freeze all except last two
+    for layer in new_model.layers[:-1]:  # Freeze all except last two
         layer.trainable = False
 
-    for layer in new_model.layers[-2:]:  # Ensure last two are trainable
+    for layer in new_model.layers[-1:]:  # Ensure last two are trainable
         layer.trainable = True
     
     new_model.compile(loss=tf.keras.losses.BinaryCrossentropy(), optimizer=tf.keras.optimizers.AdamW(learning_rate=1e-3), 
