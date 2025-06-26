@@ -83,7 +83,7 @@ def train_model(data_folder, model_folder, verbose):
     record_list = np.asarray(record_list)
     source_list = np.asarray(source_list)
     record_list_stripped = [os.path.basename(record) for record in record_list]
-    record_list_stripped = [int(s) for s in record_list_stripped]
+    #record_list_stripped = [int(s) for s in record_list_stripped]
     #print("record_list_stripped:", record_list_stripped)
     #time.sleep(50)
     #records = [int(os.path.basename(s)) for s in records]
@@ -116,6 +116,7 @@ def train_model(data_folder, model_folder, verbose):
     record_list_stripped = np.asarray(record_list_stripped)
 
     record_list_stripped_pretrain = record_list_stripped[indices_pretrain]
+    record_list_stripped_pretrain = [int(s) for s in record_list_stripped_pretrain]
     
     
     pretrain_auxillary_labels["exam_id"] = pretrain_auxillary_labels["exam_id"].astype(int)
@@ -200,10 +201,10 @@ def train_model(data_folder, model_folder, verbose):
     # Create new model
     new_model = Model(inputs=model.input, outputs=new_output)
     
-    for layer in new_model.layers[:-1]:  # Freeze all except last two
+    for layer in new_model.layers[:-1]:  # Freeze all except last 
         layer.trainable = False
 
-    for layer in new_model.layers[-1:]:  # Ensure last two are trainable
+    for layer in new_model.layers[-1:]:  # Ensure last are trainable
         layer.trainable = True
     
     new_model.compile(loss=tf.keras.losses.BinaryCrossentropy(), optimizer=tf.keras.optimizers.AdamW(learning_rate=1e-3), 
