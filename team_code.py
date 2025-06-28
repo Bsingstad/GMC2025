@@ -25,6 +25,8 @@ from sklearn.utils import shuffle
 from tensorflow.keras import layers, Model
 from tensorflow.keras.layers import Activation
 from tensorflow.keras.callbacks import ModelCheckpoint
+import tensorflow as tf
+
 
 from helper_code import *
 
@@ -39,7 +41,12 @@ from helper_code import *
 
 # Train your model.
 def train_model(data_folder, model_folder, verbose):
-    NEW_FS = 100
+    PRETRAIN = True
+    FINETUNE = False
+    NEW_FS = 250
+    TIME = 7  # seconds
+    AUXILIARY = False
+    selected_leads = [0, 1, 2] + list(range(-6, 0))  # [-6, -5, -4, -3, -2, -1]
     SOURCE = "# Source:"
     os.makedirs(model_folder, exist_ok=True)
     # Find the data files.
@@ -49,8 +56,6 @@ def train_model(data_folder, model_folder, verbose):
     records = find_records(data_folder)
     num_records = len(records)
     records = sorted(records)
-
-
 
     pretrain_auxillary_labels = pd.read_csv(os.path.join("./", 'exams.csv'),dtype={'exam_id': str})
 
@@ -90,7 +95,8 @@ def train_model(data_folder, model_folder, verbose):
     #
     #records = [str(s) for s in records]
 
-    indices_pretrain = np.where(source_list == 'CODE-15%')[0]
+    #indices_pretrain = np.where(source_list == 'CODE-15%')[0]
+    indices_pretrain = np.where((source_list == 'CODE-15%')|(source_list == 'SaMi-Trop')|(source_list == 'Athlete')|(source_list == 'PTB-XL'))[0]
     indices_finetune = np.where((source_list == 'SaMi-Trop')|(source_list == 'PTB-XL')|(source_list == 'Athlete'))[0]
    
     # Train the models.
@@ -118,19 +124,19 @@ def train_model(data_folder, model_folder, verbose):
     record_list_stripped_pretrain = record_list_stripped[indices_pretrain]
     record_list_stripped_pretrain = [int(s) for s in record_list_stripped_pretrain]
     
-    
-    pretrain_auxillary_labels["exam_id"] = pretrain_auxillary_labels["exam_id"].astype(int)
-    pretrain_auxillary_labels = pretrain_auxillary_labels[pretrain_auxillary_labels["exam_id"].isin(record_list_stripped_pretrain)]
+    if AUXILIARY == True:
+        pretrain_auxillary_labels["exam_id"] = pretrain_auxillary_labels["exam_id"].astype(int)
+        pretrain_auxillary_labels = pretrain_auxillary_labels[pretrain_auxillary_labels["exam_id"].isin(record_list_stripped_pretrain)]
 
-    pretrain_auxillary_labels['exam_id'] = pd.Categorical(pretrain_auxillary_labels['exam_id'], categories=record_list_stripped_pretrain, ordered=True)
-    pretrain_auxillary_labels = pretrain_auxillary_labels.sort_values('exam_id')
+        pretrain_auxillary_labels['exam_id'] = pd.Categorical(pretrain_auxillary_labels['exam_id'], categories=record_list_stripped_pretrain, ordered=True)
+        pretrain_auxillary_labels = pretrain_auxillary_labels.sort_values('exam_id')
 
-    if not (pretrain_auxillary_labels["exam_id"].values == record_list_stripped_pretrain).all():
-        raise ValueError("Mismatch between pretrain_auxillary_labels and record_list_stripped_pretrain.")
+        if not (pretrain_auxillary_labels["exam_id"].values == record_list_stripped_pretrain).all():
+            raise ValueError("Mismatch between pretrain_auxillary_labels and record_list_stripped_pretrain.")
 
 
-    pretrain_auxillary_labels = pretrain_auxillary_labels[["1dAVb","RBBB","LBBB","SB","ST","AF"]].values
-    pretrain_auxillary_labels = pretrain_auxillary_labels.astype(int)
+        pretrain_auxillary_labels = pretrain_auxillary_labels[["1dAVb","RBBB","LBBB","SB","ST","AF"]].values
+        pretrain_auxillary_labels = pretrain_auxillary_labels.astype(int)
 
     
 
@@ -140,13 +146,16 @@ def train_model(data_folder, model_folder, verbose):
     labels_pretrain = labels[indices_pretrain]
 
     print("labels_pretrain.shape:", labels_pretrain.shape)
-    labels_pretrain = np.hstack((pretrain_auxillary_labels, labels_pretrain.reshape(-1, 1)))
-    #labels_pretrain = np.expand_dims(labels_pretrain, axis=1)
+    if AUXILIARY == True:
+        labels_pretrain = np.hstack((pretrain_auxillary_labels, labels_pretrain.reshape(-1, 1)))
+    else:
+        labels_pretrain = np.expand_dims(labels_pretrain, axis=1)
     print(labels_pretrain.shape)
 
 
     X_train, X_val, y_train, y_val = train_test_split(record_list_pretrain,labels_pretrain, test_size=0.20, random_state=42)
-    model = build_model((1000,12), labels_pretrain.shape[1])
+    #model = build_model((1000,12), labels_pretrain.shape[1])
+    model = build_inception_next(input_shape=(int(NEW_FS*TIME), len(selected_leads)), num_classes=labels_pretrain.shape[1])
     model.compile(loss=tf.keras.losses.BinaryCrossentropy(), optimizer=tf.keras.optimizers.AdamW(learning_rate=1e-3), 
               metrics=[#tf.keras.metrics.BinaryAccuracy(),
                        tf.keras.metrics.AUC(
@@ -154,24 +163,25 @@ def train_model(data_folder, model_folder, verbose):
                     curve='ROC',
                     summation_method='interpolation',
                     name="ROC",
-                    multi_label=True,
+                    multi_label=False,
                     ),
                    tf.keras.metrics.AUC(
                     num_thresholds=200,
                     curve='PR',
                     summation_method='interpolation',
                     name="PRC",
-                    multi_label=True,
+                    multi_label=False,
                     )
           ])
-    history = model.fit(balanced_batch_generator(BATCH_SIZE,generate_X(X_train), generate_y(y_train), 12, labels_pretrain.shape[1], y_train),
-                        steps_per_epoch=(len(X_train)//BATCH_SIZE),
-                        validation_data= batch_generator(BATCH_SIZE,generate_X(X_val), generate_y(y_val), 12, labels_pretrain.shape[1]),
-                        validation_steps=(len(X_val)//BATCH_SIZE), validation_freq=1,
-                        epochs=EPOCHS, verbose=1,
-                        callbacks=[model_checkp]
-                        )
-    model.load_weights(temp_model + temp_model_name)
+    if PRETRAIN == True:
+        history = model.fit(balanced_batch_generator(BATCH_SIZE,generate_X(X_train, new_fs=NEW_FS, leads=selected_leads, time=TIME), generate_y(y_train), len(selected_leads), labels_pretrain.shape[1], y_train, time=TIME, new_fs=NEW_FS),
+                            steps_per_epoch=(len(X_train)//BATCH_SIZE),
+                            validation_data= batch_generator(BATCH_SIZE,generate_X(X_val, new_fs=NEW_FS, leads=selected_leads, time=TIME), generate_y(y_val), len(selected_leads), labels_pretrain.shape[1], time=TIME, new_fs=NEW_FS),
+                            validation_steps=(len(X_val)//BATCH_SIZE), validation_freq=1,
+                            epochs=EPOCHS, verbose=1,
+                            callbacks=[model_checkp]
+                            )
+        model.load_weights(temp_model + temp_model_name)
 
     if verbose:
         print('Finetuning the model...')
@@ -195,49 +205,53 @@ def train_model(data_folder, model_folder, verbose):
     record_list_finetune = record_list[indices_finetune]
     labels_finetune = labels[indices_finetune]
     X_train, X_val, y_train, y_val = train_test_split(record_list_finetune,labels_finetune,test_size=0.20, random_state=42)
-    x = model.layers[-2].output  # Get output of second-last layer
-    new_output = tf.keras.layers.Dense(1, activation='sigmoid')(x)
 
-    # Create new model
-    new_model = Model(inputs=model.input, outputs=new_output)
-    
-    for layer in new_model.layers[:-1]:  # Freeze all except last 
-        layer.trainable = False
+    if FINETUNE == True:
+        x = model.layers[-2].output  # Get output of second-last layer
+        new_output = tf.keras.layers.Dense(1, activation='sigmoid')(x)
 
-    for layer in new_model.layers[-1:]:  # Ensure last are trainable
-        layer.trainable = True
-    
-    new_model.compile(loss=tf.keras.losses.BinaryCrossentropy(), optimizer=tf.keras.optimizers.AdamW(learning_rate=1e-3), 
-              metrics=[tf.keras.metrics.BinaryAccuracy(),
-                       tf.keras.metrics.AUC(
-                    num_thresholds=200,
-                    curve='ROC',
-                    summation_method='interpolation',
-                    name="ROC",
-                    multi_label=False,
-                    ),
-                   tf.keras.metrics.AUC(
-                    num_thresholds=200,
-                    curve='PR',
-                    summation_method='interpolation',
-                    name="PRC",
-                    multi_label=False,
-                    )
-          ])
-    history = new_model.fit(balanced_batch_generator(BATCH_SIZE,generate_X(X_train), generate_y(y_train), 12, 1, y_train),
-                        steps_per_epoch=(len(X_train)//BATCH_SIZE),
-                        validation_data= batch_generator(BATCH_SIZE,generate_X(X_val), generate_y(y_val), 12, 1),
-                        validation_steps=(len(X_val)//BATCH_SIZE), validation_freq=1,
-                        epochs=EPOCHS, verbose=1,
-                        callbacks=[model_checkp]
+        # Create new model
+        new_model = Model(inputs=model.input, outputs=new_output)
+        
+        for layer in new_model.layers[:-1]:  # Freeze all except last 
+            layer.trainable = False
+
+        for layer in new_model.layers[-1:]:  # Ensure last are trainable
+            layer.trainable = True
+        
+        new_model.compile(loss=tf.keras.losses.BinaryCrossentropy(), optimizer=tf.keras.optimizers.AdamW(learning_rate=1e-3), 
+                metrics=[tf.keras.metrics.BinaryAccuracy(),
+                        tf.keras.metrics.AUC(
+                        num_thresholds=200,
+                        curve='ROC',
+                        summation_method='interpolation',
+                        name="ROC",
+                        multi_label=False,
+                        ),
+                    tf.keras.metrics.AUC(
+                        num_thresholds=200,
+                        curve='PR',
+                        summation_method='interpolation',
+                        name="PRC",
+                        multi_label=False,
                         )
-    new_model.load_weights(temp_model + temp_model_name)
+            ])
+        history = new_model.fit(balanced_batch_generator(BATCH_SIZE,generate_X(X_train, new_fs=NEW_FS, leads=selected_leads, time=TIME), generate_y(y_train), len(selected_leads), 1, y_train, time=TIME,new_fs=NEW_FS),
+                            steps_per_epoch=(len(X_train)//BATCH_SIZE),
+                            validation_data= batch_generator(BATCH_SIZE,generate_X(X_val, new_fs=NEW_FS, leads=selected_leads, time=TIME), generate_y(y_val), len(selected_leads), 1, time=TIME, new_fs=NEW_FS),
+                            validation_steps=(len(X_val)//BATCH_SIZE), validation_freq=1,
+                            epochs=EPOCHS, verbose=1,
+                            callbacks=[model_checkp]
+                            )
+        model = new_model
+    
+    model.load_weights(temp_model + temp_model_name)
 
 
     os.makedirs(model_folder, exist_ok=True)
 
     # Save the model.
-    save_model(model_folder, new_model)
+    save_model(model_folder, model)
 
     if verbose:
         print('Done.')
@@ -253,12 +267,13 @@ def load_model(model_folder, verbose):
 # Run your trained model. This function is *required*. You should edit this function to add your code, but do *not* change the
 # arguments of this function.
 def run_model(record, model, verbose):
-    NEW_FS = 100
+    NEW_FS = 250
+    TIME = 7  # seconds
+    selected_leads = [0, 1, 2] + list(range(-6, 0))  # [-6, -5, -4, -3, -2, -1]
+
     # Load the model.
     
     # Extract the features.
-    features = extract_features(record)
-    features = features.reshape(1, -1)
     ecg, text= load_signals(record)
     #text = load_text(record)
     fs = int(text["fs"])
@@ -266,13 +281,15 @@ def run_model(record, model, verbose):
     ecg_resamp = signal.resample(ecg,int(ecg.shape[0]*fs_ratio), axis=0)
     ecg_pad = tf.keras.utils.pad_sequences(
         np.moveaxis(ecg_resamp,0,-1),
-        maxlen=1000,
+        maxlen=(int(NEW_FS*TIME)),  # Assuming 7 seconds of data
         dtype='float32',
         padding='post',
         truncating='post',
         value=0.0
     )
     ecg_pad = np.moveaxis(ecg_pad,0,-1)
+    # Select only the specified leads
+    ecg_pad = ecg_pad[:, selected_leads]
 
     # Get the model outputs.
     probability_output = model.predict(np.expand_dims(ecg_pad,0))
@@ -515,8 +532,8 @@ def build_model(input_shape, nb_classes, depth=6, use_residual=True, lr_init = 0
     return model
 
 
-def batch_generator(batch_size, gen_x, gen_y, num_leads, num_classes): 
-    batch_features = np.zeros((batch_size,(100*10), num_leads))
+def batch_generator(batch_size, gen_x, gen_y, num_leads, num_classes, time, new_fs): 
+    batch_features = np.zeros((batch_size,int(new_fs*time), num_leads))
     batch_labels = np.zeros((batch_size,num_classes))
     while True:
         for i in range(batch_size):
@@ -528,24 +545,24 @@ def batch_generator(batch_size, gen_x, gen_y, num_leads, num_classes):
 
 
 
-def generate_X(X_train_file):
+def generate_X(X_train_file, new_fs, leads, time):
     while True:
         for i in range(len(X_train_file)):
             ecg, text = load_signals(X_train_file[i])
 
             fs = int(text["fs"])
-            fs_ratio = 100/fs
+            fs_ratio = new_fs/fs
             ecg_resamp = signal.resample(ecg,int(ecg.shape[0]*fs_ratio), axis=0)
             ecg_pad = tf.keras.utils.pad_sequences(
                 np.moveaxis(ecg_resamp,0,-1),
-                maxlen=1000,
+                maxlen=int(new_fs*time),  # Assuming 10 seconds of data
                 dtype='int32',
                 padding='post',
                 truncating='post',
                 value=0.0
             )
             ecg_pad = np.moveaxis(ecg_pad,0,-1)
-            yield ecg_pad
+            yield ecg_pad[:, leads]  # Select only the specified leads
 
 def generate_y(y_train):
     while True:
@@ -553,7 +570,7 @@ def generate_y(y_train):
             yield y_train[i]
 
 
-def balanced_batch_generator(batch_size, gen_x, gen_y, num_leads, num_classes, y_data):
+def balanced_batch_generator(batch_size, gen_x, gen_y, num_leads, num_classes, y_data, time,new_fs):
     # Separate indices of positive and negative classes
     positive_indices = np.where(y_data == 1)[0]
     negative_indices = np.where(y_data == 0)[0]
@@ -562,7 +579,7 @@ def balanced_batch_generator(batch_size, gen_x, gen_y, num_leads, num_classes, y
     half_batch = batch_size // 2
     
     # Initialize arrays to hold the batch data
-    batch_features = np.zeros((batch_size, (100*10), num_leads))
+    batch_features = np.zeros((batch_size, int(new_fs*time), num_leads))
     batch_labels = np.zeros((batch_size, num_classes))
     
     while True:
@@ -593,4 +610,5 @@ def get_source(record):
     # Extract the source information from the text header
     source = get_variable(text, "# Source:")
     return source[0] 
+
 
