@@ -96,7 +96,7 @@ def train_model(data_folder, model_folder, verbose):
     #records = [str(s) for s in records]
 
     #indices_pretrain = np.where(source_list == 'CODE-15%')[0]
-    indices_pretrain = np.where((source_list == 'CODE-15%')|(source_list == 'SaMi-Trop')|(source_list == 'Athlete')|(source_list == 'PTB-XL'))[0]
+    indices_pretrain = np.where((source_list == 'CODE-15%')|(source_list == 'SaMi-Trop')|(source_list == 'Athlete'))[0]
     indices_finetune = np.where((source_list == 'SaMi-Trop')|(source_list == 'PTB-XL')|(source_list == 'Athlete'))[0]
    
     # Train the models.
