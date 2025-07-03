@@ -43,7 +43,7 @@ from helper_code import *
 def train_model(data_folder, model_folder, verbose):
     PRETRAIN = True
     FINETUNE = False
-    NEW_FS = 250
+    NEW_FS = 100
     TIME = 7  # seconds
     AUXILIARY = False
     selected_leads = [0, 1, 2] + list(range(-6, 0))  # [-6, -5, -4, -3, -2, -1]
@@ -267,7 +267,7 @@ def load_model(model_folder, verbose):
 # Run your trained model. This function is *required*. You should edit this function to add your code, but do *not* change the
 # arguments of this function.
 def run_model(record, model, verbose):
-    NEW_FS = 250
+    NEW_FS = 100
     TIME = 7  # seconds
     selected_leads = [0, 1, 2] + list(range(-6, 0))  # [-6, -5, -4, -3, -2, -1]
 
