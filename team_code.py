@@ -140,7 +140,7 @@ def train_model(data_folder, model_folder, verbose):
 
     
 
-    EPOCHS = 10
+    EPOCHS = 15
     BATCH_SIZE = 32
     record_list_pretrain = record_list[indices_pretrain]
     labels_pretrain = labels[indices_pretrain]
@@ -154,8 +154,8 @@ def train_model(data_folder, model_folder, verbose):
 
 
     X_train, X_val, y_train, y_val = train_test_split(record_list_pretrain,labels_pretrain, test_size=0.15, random_state=42)
-    #model = build_model((1000,12), labels_pretrain.shape[1])
-    model = build_inception_next(input_shape=(int(NEW_FS*TIME), len(selected_leads)), num_classes=labels_pretrain.shape[1])
+    model = build_model((int(NEW_FS*TIME), len(selected_leads)), labels_pretrain.shape[1])
+    #model = build_inception_next(input_shape=(int(NEW_FS*TIME), len(selected_leads)), num_classes=labels_pretrain.shape[1])
     model.compile(loss=tf.keras.losses.BinaryCrossentropy(), optimizer=tf.keras.optimizers.AdamW(learning_rate=1e-3), 
               metrics=[#tf.keras.metrics.BinaryAccuracy(),
                        tf.keras.metrics.AUC(
