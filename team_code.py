@@ -245,7 +245,7 @@ def train_model(data_folder, model_folder, verbose):
                             )
         model = new_model
     
-    model.load_weights(temp_model + temp_model_name)
+        model.load_weights(temp_model + temp_model_name)
 
 
     os.makedirs(model_folder, exist_ok=True)
