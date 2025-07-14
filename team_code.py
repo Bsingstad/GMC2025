@@ -43,7 +43,7 @@ from helper_code import *
 def train_model(data_folder, model_folder, verbose):
     PRETRAIN = True
     FINETUNE = False
-    NEW_FS = 100
+    NEW_FS = 400
     TIME = 7  # seconds
     AUXILIARY = False
     selected_leads = [0, 1, 2] + list(range(-6, 0))  # [-6, -5, -4, -3, -2, -1]
@@ -267,7 +267,7 @@ def load_model(model_folder, verbose):
 # Run your trained model. This function is *required*. You should edit this function to add your code, but do *not* change the
 # arguments of this function.
 def run_model(record, model, verbose):
-    NEW_FS = 100
+    NEW_FS = 400
     TIME = 7  # seconds
     selected_leads = [0, 1, 2] + list(range(-6, 0))  # [-6, -5, -4, -3, -2, -1]
 
@@ -552,7 +552,10 @@ def generate_X(X_train_file, new_fs, leads, time):
 
             fs = int(text["fs"])
             fs_ratio = new_fs/fs
-            ecg_resamp = signal.resample(ecg,int(ecg.shape[0]*fs_ratio), axis=0)
+            if new_fs != fs:
+                ecg_resamp = signal.resample(ecg,int(ecg.shape[0]*fs_ratio), axis=0)
+            else:
+                ecg_resamp = ecg
             ecg_pad = tf.keras.utils.pad_sequences(
                 np.moveaxis(ecg_resamp,0,-1),
                 maxlen=int(new_fs*time),  # Assuming 10 seconds of data
