@@ -6,3 +6,4 @@ my_output/*
 venv/*
 check_data_source.ipynb
 code15_wfdb_mini/*
+fm_outputs/
