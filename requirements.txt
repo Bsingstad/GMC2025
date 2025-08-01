@@ -5,5 +5,5 @@ scikit-learn==1.5.2
 wfdb==3.4.1
 h5py==3.11.0
 scipy==1.13.1
-torch==1.11
+torch==1.11.0
 tqdm==4.64.0
