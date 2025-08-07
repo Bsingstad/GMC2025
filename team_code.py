@@ -135,10 +135,6 @@ def train_model(data_folder, model_folder, verbose):
 
     device = torch.device("cuda:{}".format(gpu_id) if torch.cuda.is_available() else "cpu")
 
-    
-
-
-
     record_list_pretrain = record_list[indices_pretrain]
     labels_pretrain = labels[indices_pretrain]
 
@@ -773,8 +769,10 @@ def ft_12lead_ECGFounder(device, pth, n_classes, linear_prob=False):
 
     # Ignore last layer weights
     #state_dict = {k: v for k, v in state_dict.items() if not k.startswith('dense.')}
+    filtered_state_dict = {k: v for k, v in state_dict.items() if not k.startswith('dense.')}
 
-    model.load_state_dict(state_dict, strict=False)
+
+    model.load_state_dict(filtered_state_dict, strict=False)
 
     # Replace last layer and move full model to GPU
     model.dense = nn.Linear(model.dense.in_features, n_classes)
