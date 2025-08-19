@@ -6,6 +6,4 @@ wfdb==3.4.1
 h5py==3.8.0
 scipy==1.7.3
 tqdm==4.64.0
-torch==2.1.0+cu121
-torchvision==0.16.0+121
-torchaudio==2.1.0
+
