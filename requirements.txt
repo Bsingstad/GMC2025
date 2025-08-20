@@ -1,9 +1,8 @@
 joblib==1.4.2
-numpy==1.26.4
-pandas==1.3.5
-scikit-learn==1.2.1
-wfdb==3.4.1
-h5py==3.8.0
-scipy==1.7.3
 tqdm==4.64.0
-
+numpy==1.21.6
+scipy==1.7.3
+pandas==1.3.5
+scikit-learn==1.0.2
+h5py==3.8.0
+wfdb==3.4.1
