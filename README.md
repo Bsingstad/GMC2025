@@ -1,154 +1,179 @@
-# Python example code for the George B. Moody PhysioNet Challenge 2025
+# Cha-Cha-Chagas: Auxiliary Pretraining and Fine-Tuning Across Heterogeneous Datasets for ECG-Based Chagas Disease Detection
 
-## What's in this repository?
+This repository contains the **Python implementation** for our entry in the **George B. Moody PhysioNet Challenge 2025**, titled *"Auxiliary Pretraining and Fine-Tuning Across Heterogeneous Datasets for ECG-Based Chagas Disease Detection"*.
 
-This repository contains a simple example that illustrates how to format a Python entry for the [George B. Moody PhysioNet Challenge 2025](https://physionetchallenges.org/2025/). If you are participating in the 2025 Challenge, then we recommend using this repository as a template for your entry. You can remove some of the code, reuse other code, and add new code to create your entry. You do not need to use the models, features, and/or libraries in this example for your entry. We encourage a diversity of approaches to the Challenges.
+Our submission was developed by the **Cha-Cha-Chagas** team and builds upon the official [PhysioNet Challenge 2025 Python example repository](https://github.com/physionetchallenges/python-example-2025), expanding it with deep learning–based architectures, auxiliary pretraining, and fine-tuning strategies for improved ECG-based Chagas disease detection.
 
-For this example, we implemented a random forest model with several simple features. (This simple example is **not** designed to perform well, so you should **not** use it as a baseline for your approach's performance.) You can try it by running the following commands on the Challenge training set. If you are using a relatively recent personal computer, then you should be able to run these commands from start to finish on a small subset (1000 records) of the training data in a few minutes or less.
+---
 
-## How do I run these scripts?
+## 🧠 Overview
 
-First, you can download and create data for these scripts by following the instructions in the following section.
+Chagas disease (American trypanosomiasis) is a parasitic infection caused by *Trypanosoma cruzi*, often leading to **chronic Chagas cardiomyopathy (CCC)**. Detection from ECG signals remains challenging due to the scarcity of high-quality labeled data.
 
-Second, you can install the dependencies for these scripts by creating a Docker image (see below) or [virtual environment](https://docs.python.org/3/library/venv.html) and running
+Our approach investigates whether **auxiliary pretraining on weakly labeled ECG data** (from the large CODE-15% dataset) can improve downstream Chagas detection when **fine-tuned on datasets with stronger labels** such as SaMi-Trop (serologically confirmed positives) and PTB-XL (assumed negatives).
 
-    pip install -r requirements.txt
+Despite the hypothesis, experiments revealed that this pretraining strategy **did not outperform conventional supervised training**, underscoring the importance of dataset balance, label reliability, and domain similarity in multi-dataset ECG modeling.
 
-You can train your model by running
+---
 
-    python train_model.py -d training_data -m model
+## 📁 Repository Structure
 
-where
+* `train_model.py` — Wrapper for training.
+* `run_model.py` — Wrapper for inference.
+* `evaluate_model.py` — Used for local validation with the official PhysioNet evaluation code.
+* `team_code.py` — **Main implementation** containing:
 
-- `training_data` (input; required) is a folder with the training data files, which must include the labels; and
-- `model` (output; required) is a folder for saving your model.
+  * Deep neural network architecture (`Net1D`).
+  * Dataset handling (`ECGDataset`).
+  * Auxiliary pretraining and fine-tuning logic.
+  * Model saving/loading utilities.
 
-You can run your trained model by running
+Do **not** modify the official PhysioNet scripts (`train_model.py`, `run_model.py`, `helper_code.py`). Only `team_code.py` should be edited.
 
-    python run_model.py -d holdout_data -m model -o holdout_outputs
+---
 
-where
+## 🧩 Method Summary
 
-- `holdout_data` (input; required) is a folder with the holdout data files, which will not necessarily include the labels;
-- `model` (input; required) is a folder for loading your model; and
-- `holdout_outputs` (output; required) is a folder for saving your model outputs.
+### Data Sources
 
-The [Challenge website](https://physionetchallenges.org/2025/#data) provides a training database with a description of the contents and structure of the data files.
+We used the following datasets:
 
-You can evaluate your model by pulling or downloading the [evaluation code](https://github.com/physionetchallenges/evaluation-2025) and running
+* **CODE-15%**: Large Brazilian ECG dataset with weak self-reported Chagas labels.
+* **SaMi-Trop**: Serologically verified Chagas cohort (positive cases only).
+* **PTB-XL**: German ECG dataset (assumed Chagas-negative controls).
 
-    python evaluate_model.py -d holdout_data -o holdout_outputs -s scores.csv
+### Data Processing
 
-where
+* Resampling to **400 Hz**.
+* Fixed window of **7 seconds** (shortest common duration).
+* All **12 standard ECG leads** used.
+* Resampling and zero-padding handled dynamically during dataset loading.
+* Signals and metadata read via the PhysioNet helper functions.
 
-- `holdout_data`(input; required) is a folder with labels for the holdout data files, which must include the labels;
-- `holdout_outputs` (input; required) is a folder containing files with your model's outputs for the data; and
-- `scores.csv` (output; optional) is file with a collection of scores for your model.
+### Model Architecture
 
-You can use the provided training set for the `training_data` and `holdout_data` files, but we will use different datasets for the validation and test sets, and we will not provide the labels to your code.
+We implemented a **1D convolutional neural network (Net1D)** inspired by the *InceptionTime* architecture:
 
-## How do I create data for these scripts?
+* Residual connections for stable training.
+* Variable receptive fields for multi-scale temporal feature extraction.
+* Integrated **Squeeze-and-Excitation** blocks.
+* Final linear classifier for binary Chagas prediction.
 
-You can use the scripts in this repository to convert the [CODE-15% dataset](https://zenodo.org/records/4916206) to [WFDB](https://wfdb.io/) format. These instructions use `code15_hdf5` as the path for the input data files and `code15_wfdb` for the output data files, but you can replace them with the absolute or relative paths for the files on your machine.
+### Training Strategy
 
-1. Download and unzip one or more of the `exam_part` files and the `exams.csv` file in the [CODE-15% dataset](https://zenodo.org/records/4916206).
+#### 1. Auxiliary Pretraining
 
-2. Download and unzip the Chagas labels, i.e., the [`code15_chagas_labels.csv`](https://physionetchallenges.org/2025/data/code15_chagas_labels.zip) file.
+* Model pretrained on **CODE-15%**, **SaMi-Trop**, and **Athlete** subsets.
+* Auxiliary tasks included demographic and rhythm-related ECG features.
 
-3. Convert the CODE-15% dataset to WFDB format, with the available demographics information and Chagas labels in the WFDB header file, by running
+#### 2. Fine-Tuning
 
-        python prepare_code15_data.py \
-            -i code15_hdf5/exams_part0.hdf5 code15_hdf5/exams_part1.hdf5 \
-            -d code15_hdf5/exams.csv \
-            -l code15_hdf5/code15_chagas_labels.csv \
-            -o code15_wfdb
+* Model fine-tuned using **SaMi-Trop** (positive) and **PTB-XL** (negative) data.
+* Used **balanced mini-batches** via a `WeightedRandomSampler`.
+* Optimization: Adam (lr=1e-4), weight decay=1e-5.
+* Loss: Binary cross-entropy (BCEWithLogitsLoss).
+* Training for 5 epochs per phase, with early stopping based on validation AUROC.
 
-Each `exam_part` file in the [CODE-15% dataset](https://zenodo.org/records/4916206) contains approximately 20,000 ECG recordings. You can include more or fewer of these files to increase or decrease the number of ECG recordings, respectively. You may want to start with fewer ECG recordings to debug your code.
+---
 
-## Which scripts I can edit?
+## 🧪 Results Summary
 
-Please edit the following script to add your code:
+| Training Setup                      | Datasets                    | AUROC | AUPRC | Challenge Score (Hidden Test) |
+| ----------------------------------- | --------------------------- | ----- | ----- | ----------------------------- |
+| Auxiliary Pretraining + Fine-Tuning | CODE-15%, SaMi-Trop, PTB-XL | 0.69  | 0.22  | 0.040                         |
+| Conventional (No Pretraining)       | CODE-15%, SaMi-Trop         | 0.81  | 0.41  | 0.226                         |
 
-* `team_code.py` is a script with functions for training and running your trained model.
+**Key Finding:** Auxiliary pretraining using weak CODE-15% labels did **not** generalize better than direct supervised training. Domain shift between datasets (e.g., Brazilian vs. German populations) likely caused dataset bias during fine-tuning.
 
-Please do **not** edit the following scripts. We will use the unedited versions of these scripts when running your code:
+---
 
-* `train_model.py` is a script for training your model.
-* `run_model.py` is a script for running your trained model.
-* `helper_code.py` is a script with helper functions that we used for our code. You are welcome to use them in your code.
+## 🚀 Running the Code
 
-These scripts must remain in the root path of your repository, but you can put other scripts and other files elsewhere in your repository.
+### 1. Installation
 
-## How do I train, save, load, and run my model?
+Create a virtual environment or use Docker. Then install dependencies:
 
-To train and save your model, please edit the `train_model` function in the `team_code.py` script. Please do not edit the input or output arguments of this function.
+```bash
+pip install -r requirements.txt
+```
 
-To load and run your trained model, please edit the `load_model` and `run_model` functions in the `team_code.py` script. Please do not edit the input or output arguments of these functions.
+### 2. Training
 
-## How do I run these scripts in Docker?
+```bash
+python train_model.py -d training_data -m model -v
+```
 
-Docker and similar platforms allow you to containerize and package your code with specific dependencies so that your code can be reliably run in other computational environments.
+### 3. Inference
 
-To increase the likelihood that we can run your code, please [install](https://docs.docker.com/get-docker/) Docker, build a Docker image from your code, and run it on the training data. To quickly check your code for bugs, you may want to run it on a small subset of the training data, such as 1000 records.
+```bash
+python run_model.py -d holdout_data -m model -o holdout_outputs -v
+```
 
-If you have trouble running your code, then please try the follow steps to run the example code.
+### 4. Evaluation
 
-1. Create a folder `example` in your home directory with several subfolders.
+Clone and run the official evaluation repo:
 
-        user@computer:~$ cd ~/
-        user@computer:~$ mkdir example
-        user@computer:~$ cd example
-        user@computer:~/example$ mkdir training_data holdout_data model holdout_outputs
+```bash
+python evaluate_model.py -d holdout_data -o holdout_outputs -s scores.csv
+```
 
-2. Download the training data from the [Challenge website](https://physionetchallenges.org/2025/#data). Put some of the training data in `training_data` and `holdout_data`. You can use some of the training data to check your code (and you should perform cross-validation on the training data to evaluate your algorithm).
+### 5. Docker (Recommended)
 
-3. Download or clone this repository in your terminal.
+To ensure reproducibility:
 
-        user@computer:~/example$ git clone https://github.com/physionetchallenges/python-example-2025.git
+```bash
+docker build -t chagas_image .
+docker run -it -v ~/example/training_data:/challenge/training_data \
+               -v ~/example/model:/challenge/model \
+               -v ~/example/holdout_data:/challenge/holdout_data \
+               -v ~/example/holdout_outputs:/challenge/holdout_outputs chagas_image bash
+```
 
-4. Build a Docker image and run the example code in your terminal.
+---
 
-        user@computer:~/example$ ls
-        holdout_data  holdout_outputs  model  python-example-2025  training_data
+## ⚙️ Model Loading and Saving
 
-        user@computer:~/example$ cd python-example-2025/
+* **Save:** The model is stored as `model.pt` inside the model folder.
+* **Load:** Automatically reloaded via `load_model()` in `team_code.py`.
 
-        user@computer:~/example/python-example-2025$ docker build -t image .
+---
 
-        Sending build context to Docker daemon  [...]kB
-        [...]
-        Successfully tagged image:latest
+## 📊 Limitations and Future Work
 
-        user@computer:~/example/python-example-2025$ docker run -it -v ~/example/model:/challenge/model -v ~/example/holdout_data:/challenge/holdout_data -v ~/example/holdout_outputs:/challenge/holdout_outputs -v ~/example/training_data:/challenge/training_data image bash
+* **Dataset Bias:** Differences in acquisition equipment, population, and temporal context introduce confounders.
+* **Label Quality:** CODE-15% self-reported labels remain unreliable for fine-grained learning.
+* **Future Directions:** Domain adaptation, adversarial debiasing, or contrastive pretraining could enhance generalization across diverse ECG datasets.
 
-        root@[...]:/challenge# ls
-            Dockerfile             holdout_outputs        run_mode.py
-            evaluate_model.py      LICENSE                training_data
-            helper_code.py         README.md      
-            holdout_data           requirements.txt
+---
 
-        root@[...]:/challenge# python train_model.py -d training_data -m model -v
+## 🧩 References
 
-        root@[...]:/challenge# python run_model.py -d holdout_data -m model -o holdout_outputs -v
+This implementation accompanies the paper:
 
-        root@[...]:/challenge# python evaluate_model.py -d holdout_data -o holdout_outputs
-        [...]
+> **Auxiliary Pretraining and Fine-Tuning Across Heterogeneous Datasets for ECG-Based Chagas Disease Detection**
+> Bjørn-Jostein Singstad, Nikolai Olsen Eidheim, Amila Ruwan Guruge, Ola Marius Lysaker, Vimala Nunavath.
+> University of South-Eastern Norway & Akershus University Hospital, 2025.
+> [GitHub Repository](https://github.com/Bsingstad/GMC2025)
 
-        root@[...]:/challenge# exit
-        Exit
+---
 
-## What else do I need?
+## 🧑‍💻 Authors
 
-This repository does not include code for evaluating your entry. Please see the [evaluation code repository](https://github.com/physionetchallenges/evaluation-2025) for code and instructions for evaluating your entry using the Challenge scoring metric.
+**Cha-Cha-Chagas Team:**
 
-## How do I learn more? How do I share more?
+* Bjørn-Jostein Singstad
+* Nikolai Olsen Eidheim
+* Amila Ruwan Guruge
+* Ola Marius Lysaker
+* Vimala Nunavath
 
-Please see the [Challenge website](https://physionetchallenges.org/2025/) for more details. Please post questions and concerns on the [Challenge discussion forum](https://groups.google.com/forum/#!forum/physionet-challenges). Please do not make pull requests, which may share information about your approach.
+Supported by the Norwegian Health Association (#29038 – Artificial intelligence–enabled ECG).
 
-## Useful links
+---
 
-* [Challenge website](https://physionetchallenges.org/2025/)
-* [MATLAB example code](https://github.com/physionetchallenges/matlab-example-2025)
-* [Evaluation code](https://github.com/physionetchallenges/evaluation-2025)
-* [Frequently asked questions (FAQ) for this year's Challenge](https://physionetchallenges.org/2025/faq/)
-* [Frequently asked questions (FAQ) about the Challenges in general](https://physionetchallenges.org/faq/)
+## 📎 Useful Links
+
+* [PhysioNet Challenge 2025](https://physionetchallenges.org/2025/)
+* [Evaluation Code Repository](https://github.com/physionetchallenges/evaluation-2025)
+* [MATLAB Example Code](https://github.com/physionetchallenges/matlab-example-2025)
+* [Official Discussion Forum](https://groups.google.com/forum/#!forum/physionet-challenges)
