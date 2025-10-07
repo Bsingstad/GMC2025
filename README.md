@@ -8,7 +8,7 @@ Our submission was developed by the **Cha-Cha-Chagas** team and builds upon the 
 
 ## 🧠 Overview
 
-Chagas disease (American trypanosomiasis) is a parasitic infection caused by *Trypanosoma cruzi*, often leading to **chronic Chagas cardiomyopathy (CCC)**. Detection from ECG signals remains challenging due to the scarcity of high-quality labeled data.
+Chagas disease (American trypanosomiasis) is a parasitic infection caused by *Trypanosoma cruzi*, soemtimes leading to **chronic Chagas cardiomyopathy (CCC)**. Detection from ECG signals remains challenging due to the scarcity of high-quality labeled data.
 
 Our approach investigates whether **auxiliary pretraining on weakly labeled ECG data** (from the large CODE-15% dataset) can improve downstream Chagas detection when **fine-tuned on datasets with stronger labels** such as SaMi-Trop (serologically confirmed positives) and PTB-XL (assumed negatives).
 
@@ -28,7 +28,7 @@ Despite the hypothesis, experiments revealed that this pretraining strategy **di
   * Auxiliary pretraining and fine-tuning logic.
   * Model saving/loading utilities.
 
-Do **not** modify the official PhysioNet scripts (`train_model.py`, `run_model.py`, `helper_code.py`). Only `team_code.py` should be edited.
+As instructed by the Organizers, we did **not** modify the official PhysioNet scripts (`train_model.py`, `run_model.py`, `helper_code.py`). Only `team_code.py`.
 
 ---
 
@@ -48,7 +48,7 @@ We used the following datasets:
 * Fixed window of **7 seconds** (shortest common duration).
 * All **12 standard ECG leads** used.
 * Resampling and zero-padding handled dynamically during dataset loading.
-* Signals and metadata read via the PhysioNet helper functions.
+* Signals and metadata read using **WFDB** package.
 
 ### Model Architecture
 
@@ -63,7 +63,7 @@ We implemented a **1D convolutional neural network (Net1D)** inspired by the *In
 
 #### 1. Auxiliary Pretraining
 
-* Model pretrained on **CODE-15%**, **SaMi-Trop**, and **Athlete** subsets.
+* Model pretrained on **CODE-15%**.
 * Auxiliary tasks included demographic and rhythm-related ECG features.
 
 #### 2. Fine-Tuning
@@ -78,10 +78,12 @@ We implemented a **1D convolutional neural network (Net1D)** inspired by the *In
 
 ## 🧪 Results Summary
 
-| Training Setup                      | Datasets                    | AUROC | AUPRC | Challenge Score (Hidden Test) |
-| ----------------------------------- | --------------------------- | ----- | ----- | ----------------------------- |
-| Auxiliary Pretraining + Fine-Tuning | CODE-15%, SaMi-Trop, PTB-XL | 0.69  | 0.22  | 0.040                         |
-| Conventional (No Pretraining)       | CODE-15%, SaMi-Trop         | 0.81  | 0.41  | 0.226                         |
+| Data used for pretraining | Data used for fine-tune or conventional training | AUROC on internal validation data | AUPRC on internal validation data | Challenge score on hidden validation data | REDS-II | SaMi-Trop | ELSA-Brasil |
+| ------------------------- | ------------------------------------------------ | --------------------------------- | --------------------------------- | ----------------------------------------- | ------- | --------- | ----------- |
+| CODE-15%                  | SaMi-Trop and PTB-XL                             | 0.69                              | 0.22                              | 0.040                                     | –       | –         | –           |
+| –                         | SaMi-Trop and PTB-XL                             | –                                 | –                                 | 0.066                                     | –       | –         | –           |
+| –                         | CODE-15%                                         | –                                 | –                                 | 0.143                                     | –       | –         | –           |
+| –                         | SaMi-Trop and CODE-15%                           | 0.81                              | 0.41                              | 0.316                                     | 0.296   | 0.247     | 0.136       |
 
 **Key Finding:** Auxiliary pretraining using weak CODE-15% labels did **not** generalize better than direct supervised training. Domain shift between datasets (e.g., Brazilian vs. German populations) likely caused dataset bias during fine-tuning.
 
