@@ -78,14 +78,14 @@ We implemented a **1D convolutional neural network (Net1D)** inspired by the *In
 
 ## 🧪 Results Summary
 
-| Data used for pretraining | Data used for fine-tune or conventional training | AUROC on internal validation data | AUPRC on internal validation data | Challenge score on hidden validation data | REDS-II | SaMi-Trop | ELSA-Brasil |
+| Data used for pretraining | Data used for fine-tune or conventional training | AUROC on internal validation data | AUPRC on internal validation data | Challenge score on hidden validation data | REDS-II (hidden test) | SaMi-Trop (hidden test) | ELSA-Brasil (hidden test) |
 | ------------------------- | ------------------------------------------------ | --------------------------------- | --------------------------------- | ----------------------------------------- | ------- | --------- | ----------- |
 | CODE-15%                  | SaMi-Trop and PTB-XL                             | 0.69                              | 0.22                              | 0.040                                     | –       | –         | –           |
 | –                         | SaMi-Trop and PTB-XL                             | –                                 | –                                 | 0.066                                     | –       | –         | –           |
 | –                         | CODE-15%                                         | –                                 | –                                 | 0.143                                     | –       | –         | –           |
 | –                         | SaMi-Trop and CODE-15%                           | 0.81                              | 0.41                              | 0.316                                     | 0.296   | 0.247     | 0.136       |
 
-**Key Finding:** Auxiliary pretraining using weak CODE-15% labels did **not** generalize better than direct supervised training. Domain shift between datasets (e.g., Brazilian vs. German populations) likely caused dataset bias during fine-tuning.
+**Key Finding:** Auxiliary pretraining using weak CODE-15% labels did **not** generalize better than direct supervised training on the development data nor the hidden validation. Therefore the best performing model, using conventional training on CODE-15% and SaMi-Trop, were applied on the final hidden test set (only one attempt). A possible cause of the unexpectedly poor results may be domain shift between datasets (e.g., Brazilian vs. German populations), which likely introduced dataset bias during fine-tuning.
 
 ---
 
@@ -135,7 +135,7 @@ docker run -it -v ~/example/training_data:/challenge/training_data \
 
 ## ⚙️ Model Loading and Saving
 
-* **Save:** The model is stored as `model.pt` inside the model folder.
+* **Save:** The model is stored as `model.keras.h5` inside the model folder.
 * **Load:** Automatically reloaded via `load_model()` in `team_code.py`.
 
 ---
@@ -169,13 +169,10 @@ This implementation accompanies the paper:
 * Ola Marius Lysaker
 * Vimala Nunavath
 
-Supported by the Norwegian Health Association (#29038 – Artificial intelligence–enabled ECG).
-
 ---
 
-## 📎 Useful Links
+## Useful Links
 
 * [PhysioNet Challenge 2025](https://physionetchallenges.org/2025/)
 * [Evaluation Code Repository](https://github.com/physionetchallenges/evaluation-2025)
-* [MATLAB Example Code](https://github.com/physionetchallenges/matlab-example-2025)
 * [Official Discussion Forum](https://groups.google.com/forum/#!forum/physionet-challenges)
